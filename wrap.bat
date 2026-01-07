@@ -1,0 +1,1 @@
+pyinstaller --noconsole --onefile --name=CodeMerger --clean --add-binary "C:\Users\dujin\miniconda3\envs\vllm\Library\bin\tcl86t.dll;." --add-binary "C:\Users\dujin\miniconda3\envs\vllm\Library\bin\tk86t.dll;." app.py
