@@ -1,4 +1,3 @@
-# main.py
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
@@ -7,12 +6,26 @@ import tkinter.font as tkfont
 class CodeMergerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python工程结构互转工具 (Stack Parser版)")
-        self.root.geometry("1100x900")
+        self.root.title("Python工程结构互转工具 (Stack Parser版 + 文件过滤)")
+        self.root.geometry("1100x950")  # 稍微增加高度以容纳过滤面板
         
         # 忽略的目录和文件
         self.IGNORE_DIRS = {'.git', '__pycache__', '.idea', '.vscode', 'venv', 'env', 'node_modules', 'build', 'dist'}
         self.IGNORE_FILES = {'.DS_Store'}
+
+        # 定义默认支持的文件类型选项 (标签名 -> 后缀列表字符串)
+        self.TYPE_OPTIONS = {
+            "Python": ".py;.pyw",
+            "Markdown": ".md",
+            "Text": ".txt",
+            "JSON": ".json",
+            "YAML": ".yaml;.yml",
+            "Web": ".html;.css;.js;.ts",
+            "C/C++": ".c;.cpp;.h;.hpp",
+            "Java": ".java",
+            "Go": ".go"
+        }
+        self.check_vars = {} # 存储复选框变量
 
         self.setup_ui()
         self.update_stats()
@@ -39,6 +52,40 @@ class CodeMergerApp:
         btn_restore = tk.Button(top_frame, text="还原: 写入文件", command=self.restore_project, 
                                 bg="#FF5722", fg="white", font=("Arial", 10, "bold"))
         btn_restore.pack(side=tk.LEFT, padx=5)
+
+        # ================= 新增：文件类型过滤面板 =================
+        filter_frame = tk.LabelFrame(self.root, text="文件类型过滤", padx=10, pady=5)
+        filter_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # 容器用于放置复选框，自动换行布局
+        checkbox_frame = tk.Frame(filter_frame)
+        checkbox_frame.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+
+        col = 0
+        row = 0
+        for label, exts in self.TYPE_OPTIONS.items():
+            var = tk.BooleanVar(value=True) # 默认全选
+            # 如果不想默认全选某些不常用的，可以在这里加判断，例如: if label in ["Python", "Markdown"]: ...
+            
+            cb = tk.Checkbutton(checkbox_frame, text=label, variable=var, command=self.update_stats_hint)
+            cb.grid(row=row, column=col, sticky=tk.W, padx=10)
+            self.check_vars[label] = var
+            
+            col += 1
+            if col > 7: # 每行放8个
+                col = 0
+                row += 1
+
+        # 自定义输入区域
+        custom_frame = tk.Frame(filter_frame, pady=5)
+        custom_frame.pack(side=tk.TOP, fill=tk.X, anchor=tk.W)
+        
+        tk.Label(custom_frame, text="额外类型 (用分号 ; 分割，例如 .sh;.bat): ").pack(side=tk.LEFT)
+        self.custom_ext_entry = tk.Entry(custom_frame, width=40)
+        self.custom_ext_entry.pack(side=tk.LEFT, padx=5)
+        self.custom_ext_entry.bind('<KeyRelease>', self.update_stats_hint) # 简单绑定提示刷新
+        
+        # ========================================================
 
         # 2. 底部功能区
         bottom_frame = tk.Frame(self.root, pady=5, padx=10)
@@ -75,14 +122,9 @@ class CodeMergerApp:
         # 默认说明
         welcome_msg = (
             "# 使用说明 (Stack解析版):\n"
-            "# 本工具已优化，可正确处理包含 ``` 的代码文件。\n"
-            "# 1. [提取]: 自动检测代码中的反引号，动态调整 Markdown 栅栏长度。\n"
-            "# 2. [还原]: 使用状态机逐行解析，确保不被内嵌的反引号截断。\n"
-            "# 3. 格式严格遵循：\n"
-            "#    ```python\n"
-            "#    # path/to/file.py\n"
-            "#    <code_content>\n"
-            "#    ```\n\n"
+            "# 1. 在上方设置【文件类型过滤】以决定提取哪些文件。\n"
+            "# 2. [提取]: 自动扫描目录，生成包含文件路径和内容的 Markdown。\n"
+            "# 3. [还原]: 将下方的 Markdown 内容还原回文件结构。\n\n"
         )
         self.text_area.insert(tk.END, welcome_msg)
 
@@ -101,6 +143,11 @@ class CodeMergerApp:
         chars = len(content)
         words = len(content.split())
         self.stats_label.config(text=f"Lines: {lines} | Words: {words} | Chars: {chars}")
+
+    def update_stats_hint(self, event=None):
+        """仅用于在调整过滤设置时，在状态栏简单提示，不进行繁重计算"""
+        # 可以显示当前允许的后缀列表，或者保持静默
+        pass
 
     def clear_text(self):
         self.text_area.delete(1.0, tk.END)
@@ -130,6 +177,31 @@ class CodeMergerApp:
 
     # ================= 核心逻辑优化区 =================
 
+    def get_allowed_extensions(self):
+        """获取当前用户选择的所有允许后缀"""
+        allowed = set()
+        
+        # 1. 获取复选框选中的类型
+        for label, var in self.check_vars.items():
+            if var.get():
+                exts = self.TYPE_OPTIONS[label].split(';')
+                for ext in exts:
+                    allowed.add(ext.strip().lower())
+        
+        # 2. 获取自定义输入框的类型
+        custom_text = self.custom_ext_entry.get().strip()
+        if custom_text:
+            parts = custom_text.split(';')
+            for p in parts:
+                p = p.strip().lower()
+                if p:
+                    # 如果用户没加点，自动补上点 (例如 "sh" -> ".sh")
+                    if not p.startswith('.'):
+                        p = '.' + p
+                    allowed.add(p)
+        
+        return tuple(allowed) # endswith 需要 tuple
+
     def get_directory_tree(self, root_path):
         output = []
         base_level = root_path.count(os.sep)
@@ -147,13 +219,20 @@ class CodeMergerApp:
         return "\n".join(output)
 
     def get_python_files_content(self, root_path):
-        """生成内容时，动态计算反引号数量，防止代码被错误截断"""
+        """生成内容时，动态计算反引号数量，并应用文件类型过滤"""
         output = []
+        allowed_extensions = self.get_allowed_extensions()
+        
+        # 如果没有选任何类型，提示一下
+        if not allowed_extensions:
+            return "## Warning: No file types selected for extraction.\n"
+
         for root, dirs, files in os.walk(root_path):
             dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS]
             
             for file in files:
-                if file.endswith((".py", ".md", ".txt", ".json", ".yaml", ".yml", ".html", ".css", ".js")):
+                # 【修改点】使用动态获取的后缀列表进行过滤
+                if file.lower().endswith(allowed_extensions):
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, root_path).replace("\\", "/")
                     
@@ -161,10 +240,9 @@ class CodeMergerApp:
                         with open(full_path, "r", encoding="utf-8") as f:
                             content = f.read()
                         
-                        # 【优化点1】检测内容中最长的连续反引号
+                        # 检测内容中最长的连续反引号
                         max_backticks = 0
                         import re
-                        # 查找连续的反引号
                         ticks = re.findall(r'`+', content)
                         if ticks:
                             max_backticks = max(len(t) for t in ticks)
@@ -173,15 +251,24 @@ class CodeMergerApp:
                         fence_len = max(3, max_backticks + 1)
                         fence = "`" * fence_len
                         
-                        block = f"{fence}python\n# {rel_path}\n{content}\n{fence}\n\n"
+                        # 尝试推断语言类型，如果是 .py 就是 python，否则只用 text 或保留后缀
+                        ext = os.path.splitext(file)[1].lower().replace('.', '')
+                        lang = "python" if ext == "py" else ext
+                        if not lang: lang = "text"
+
+                        block = f"{fence}{lang}\n# {rel_path}\n{content}\n{fence}\n\n"
                         output.append(block)
                     except Exception as e:
-                        output.append(f"```python\n# Error: {rel_path}\n# {str(e)}\n```\n\n")
+                        # 读取二进制文件或编码错误时跳过或记录
+                        output.append(f"```text\n# Skipped: {rel_path} (Read Error: {str(e)})\n```\n\n")
         
+        if not output:
+            return "## No files found matching the selected types.\n"
+            
         return "".join(output)
 
     def restore_project(self):
-        """【优化点2】使用状态机（类栈思想）逐行解析，解决嵌套截断问题"""
+        """使用状态机（类栈思想）逐行解析，解决嵌套截断问题"""
         target_root = self.path_entry.get().strip()
         full_text = self.text_area.get(1.0, tk.END)
 
@@ -213,16 +300,16 @@ class CodeMergerApp:
 
             # 1. 状态：在代码块外部，寻找开始标记
             if current_state == STATE_OUTSIDE:
-                # 匹配任意长度的栅栏，例如 ```python 或 ````python
-                if stripped.startswith("```") and stripped.endswith("python"):
-                    # 提取栅栏部分（去掉 python 后缀）
-                    fence_part = stripped[:-6].strip() # 假设紧挨着python
-                    if not fence_part: # 处理可能存在的空格
-                         idx = line.find("python")
-                         fence_part = line[:idx].strip()
-                    
-                    # 确认是纯反引号
-                    if all(c == '`' for c in fence_part):
+                # 匹配任意长度的栅栏，例如 ```python 或 ````javascript
+                # 只要以至少3个反引号开头即可
+                if stripped.startswith("```"):
+                    # 寻找语言标记的位置（如果有）
+                    # 简单的逻辑：取反引号部分作为 fence
+                    import re
+                    match = re.match(r'^(`+)(.*)', stripped)
+                    if match:
+                        fence_part = match.group(1)
+                        # 只要是纯反引号开头
                         current_fence = fence_part
                         current_state = STATE_EXPECT_PATH
                         code_buffer = []
@@ -234,17 +321,17 @@ class CodeMergerApp:
                     current_path = stripped.lstrip("#").strip()
                     current_state = STATE_INSIDE
                 else:
-                    # 如果第一行不是注释，说明不符合协议，回退状态
-                    # 或者是空行？这里为了严格性，认为不符合格式则放弃该块
+                    # 如果这一行是空的，忽略它继续找路径？
+                    # 或者，如果是非注释内容，说明这可能不是我们要还原的格式块，而是普通Markdown代码块
+                    # 为了严谨，这里如果不是路径注释，我们放弃这个块的还原，退回外部状态
                     if stripped == "":
-                         continue # 允许路径前有空行？通常不允许，这里严格处理
+                         continue 
                     current_state = STATE_OUTSIDE
                     current_fence = ""
 
             # 3. 状态：在代码块内部，收集代码，直到遇到闭合栅栏
             elif current_state == STATE_INSIDE:
-                # 检查是否是闭合栅栏
-                # 闭合栅栏必须单独一行，且长度与开启栅栏一致
+                # 检查是否是闭合栅栏 (必须完全匹配开启栅栏，且这一行通常只包含栅栏)
                 if stripped == current_fence:
                     # === 结束当前块，写入文件 ===
                     self.write_file(target_root, current_path, code_buffer)
@@ -272,7 +359,6 @@ class CodeMergerApp:
 
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
             
-            # 处理末尾多余换行（可选）
             content = "\n".join(content_lines)
             
             with open(full_path, "w", encoding="utf-8") as f:
