@@ -27,6 +27,40 @@ class CodeMergerApp:
         }
         self.check_vars = {} # 存储复选框变量
 
+        # 嵌入prompt.md内容作为字符串
+        self.PROMPT_CONTENT = """为了让我的自动化工具能够读取并写入这些文件，请严格遵守以下输出格式要求：
+
+### 格式要求（非常重要）：
+
+1.  **目录结构**：
+    首先请提供一个 ASCII 格式的项目目录树结构（根目录不要用 `.`，直接显示文件夹名）。
+    该目录树不要用反引号包裹。
+    
+2.  **代码块格式（核心逻辑）**：
+    *   所有的代码文件必须包含在 Markdown 的 `python` 代码块中。
+    *   **防截断规则（关键）**：如果文件内容本身包含 **N 个连续的反引号**（例如 ` ``` `），请务必使用 **N+1 个反引号**（例如 ` ```` `）来包裹整个代码块，以确保工具能正确解析嵌套结构。
+    *   **路径标识**：每个代码块的 **第一行必须是该文件的相对路径注释**（使用 `/` 作为分隔符）。
+
+    **普通文件示例：**
+    ```python
+    # src/main.py
+    import os
+    print("Hello World")
+    ```
+
+    **包含反引号的文件示例（注意外层用了4个反引号）：**
+    ````python
+    # src/string_utils.py
+    def get_markdown_snippet():
+        return "```text\nSample\n```"
+    ````
+
+3.  **完整性**：
+    请不要省略代码（不要只写 `pass` 或 `...`），确保代码是可以直接运行的完整版本。
+
+4.  **范围**：
+    包括所有必要的文件（如 `requirements.txt`, `README.md`, `__init__.py` 等）。如果是非 Python 文件（如 .txt, .json, .md），也请使用 `python` 代码块包裹，并在第一行保留 `# path/filename` 注释，以便工具识别路径。"""
+
         self.setup_ui()
         self.update_stats()
 
@@ -100,6 +134,8 @@ class CodeMergerApp:
         btn_copy.pack(side=tk.RIGHT, padx=5)
         btn_export = tk.Button(bottom_frame, text="导出 MD 文件", command=self.export_md_file, bg="#e1f5fe")
         btn_export.pack(side=tk.RIGHT, padx=5)
+        btn_copy_prompt = tk.Button(bottom_frame, text="复制AI prompt", command=self.copy_prompt_to_clipboard, bg="#FFC107", fg="black")
+        btn_copy_prompt.pack(side=tk.RIGHT, padx=5)
 
         # 3. 状态栏
         self.status_frame = tk.Frame(self.root, bd=1, relief=tk.SUNKEN, pady=2)
@@ -175,20 +211,29 @@ class CodeMergerApp:
         self.root.clipboard_append(self.text_area.get(1.0, tk.END))
         messagebox.showinfo("成功", "已复制到剪贴板")
 
-    # ================= 核心逻辑优化区 =================
+    def copy_prompt_to_clipboard(self):
+        """复制prompt.md文件内容到剪贴板"""
+        try:
+            # 使用嵌入的字符串内容
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.PROMPT_CONTENT)
+            messagebox.showinfo("成功", "AI prompt已复制到剪贴板")
+        except Exception as e:
+            messagebox.showerror("错误", f"复制失败: {str(e)}")
 
     def get_allowed_extensions(self):
-        """获取当前用户选择的所有允许后缀"""
+        """根据复选框和自定义输入，计算允许的后缀列表"""
         allowed = set()
-        
-        # 1. 获取复选框选中的类型
+        # 1. 复选框选中的类型
         for label, var in self.check_vars.items():
             if var.get():
-                exts = self.TYPE_OPTIONS[label].split(';')
-                for ext in exts:
-                    allowed.add(ext.strip().lower())
+                exts = self.TYPE_OPTIONS[label]
+                for ext in exts.split(';'):
+                    ext = ext.strip().lower()
+                    if ext:
+                        allowed.add(ext)
         
-        # 2. 获取自定义输入框的类型
+        # 2. 自定义输入
         custom_text = self.custom_ext_entry.get().strip()
         if custom_text:
             parts = custom_text.split(';')
@@ -217,13 +262,11 @@ class CodeMergerApp:
                 if f not in self.IGNORE_FILES:
                     output.append(f"{sub_indent}|-- {f}")
         return "\n".join(output)
-
     def get_python_files_content(self, root_path):
-        """生成内容时，动态计算反引号数量，并应用文件类型过滤"""
+        """生成内容时，动态计算反引号数量，并应用文件类型过滤，增加编码兼容性"""
         output = []
         allowed_extensions = self.get_allowed_extensions()
         
-        # 如果没有选任何类型，提示一下
         if not allowed_extensions:
             return "## Warning: No file types selected for extraction.\n"
 
@@ -231,14 +274,27 @@ class CodeMergerApp:
             dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS]
             
             for file in files:
-                # 【修改点】使用动态获取的后缀列表进行过滤
                 if file.lower().endswith(allowed_extensions):
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, root_path).replace("\\", "/")
                     
                     try:
-                        with open(full_path, "r", encoding="utf-8") as f:
-                            content = f.read()
+                        content = ""
+                        # === 修改开始：增强的编码读取逻辑 ===
+                        try:
+                            # 优先尝试 UTF-8
+                            with open(full_path, "r", encoding="utf-8") as f:
+                                content = f.read()
+                        except UnicodeDecodeError:
+                            try:
+                                # 失败则尝试 GB18030 (涵盖 GBK, GB2312)
+                                with open(full_path, "r", encoding="gb18030") as f:
+                                    content = f.read()
+                            except Exception:
+                                # 最后的手段：忽略无法识别的字符
+                                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                                    content = f.read()
+                        # === 修改结束 ===
                         
                         # 检测内容中最长的连续反引号
                         max_backticks = 0
@@ -247,11 +303,11 @@ class CodeMergerApp:
                         if ticks:
                             max_backticks = max(len(t) for t in ticks)
                         
-                        # 栅栏长度 = 内容中最长反引号数 + 1 (至少3个)
+                        # 栅栏长度
                         fence_len = max(3, max_backticks + 1)
                         fence = "`" * fence_len
                         
-                        # 尝试推断语言类型，如果是 .py 就是 python，否则只用 text 或保留后缀
+                        # 尝试推断语言类型
                         ext = os.path.splitext(file)[1].lower().replace('.', '')
                         lang = "python" if ext == "py" else ext
                         if not lang: lang = "text"
@@ -259,7 +315,6 @@ class CodeMergerApp:
                         block = f"{fence}{lang}\n# {rel_path}\n{content}\n{fence}\n\n"
                         output.append(block)
                     except Exception as e:
-                        # 读取二进制文件或编码错误时跳过或记录
                         output.append(f"```text\n# Skipped: {rel_path} (Read Error: {str(e)})\n```\n\n")
         
         if not output:
