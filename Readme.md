@@ -1,125 +1,93 @@
-既然你已经准备好了 `CodeMerger.spec` 和 `wrap.bat`，说明你支持通过 **PyInstaller** 打包成独立的 Windows 可执行文件（`.exe`）。
+# CodeMerger
 
-这对于那些不想配置 Python 环境的用户来说是一个巨大的加分项。我已经在 README 中新增了 **“下载与安装”** 以及 **“Windows 免安装版”** 的相关说明。
+[![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
----
+**CodeMerger** 是一个简单的工程结构互转工具。它可以将整个项目目录（包含文件结构和代码内容）合并为一个 Markdown 文件，方便发送给 ChatGPT、Claude 等大语言模型进行全局分析；也可以将 AI 修改后的 Markdown 内容一键还原回本地文件结构。
 
-# CodeMerger: 让 AI 读懂你的整个工程 🚀
+## ✨ 核心功能
 
-[![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+*   **智能防截断**：采用动态栅栏技术（Dynamic Fencing），自动检测代码中连续反引号的数量并生成 `N+1` 层包裹，完美解决 Python/Markdown 文件中包含 ` ``` ` 导致 AI 解析截断的问题。
+*   **双向转换**：
+    *   **提取 (Extract)**：目录树 + 源码 -> 单个 Markdown 文件。
+    *   **还原 (Restore)**：Markdown -> 自动创建目录并写入文件。
+*   **Windows 免安装**：提供封装好的 `.exe`，无需 Python 环境即可在 Windows 上直接运行。
+*   **双模式**：提供图形界面 (GUI) 和 命令行工具 (CLI)。
 
-**CodeMerger** 是一款专为开发者与大语言模型（LLM）交互设计的工程结构互转工具。它能够将复杂的项目目录一键转换为“易于 AI 理解”的 Markdown 格式，并支持将 AI 生成或修改后的内容完美还原回原始文件结构。
+## 📥 下载与运行
 
----
+### 1. Windows 免安装版 (推荐)
+无需配置 Python 环境，直接下载使用：
+1. 前往 [Releases](https://github.com/truthstriver/Codemerger/releases) 下载最新版的 `CodeMerger.exe`。
+2. 双击即可运行。
 
-## 📢 宣传文案：开发者与 AI 对话的“任意门”
-
-> **“还在手动一个一个文件复制给 ChatGPT 吗？”**
->
-> 面对庞大的工程，如何让 Claude 或 GPT-4 瞬间掌握全局？你需要一个“上下文桥梁”。
->
-> **CodeMerger** 将你的整个项目打包成一张“结构图 + 源码全集”。你可以直接把它丢给 AI，大声告诉它：“这是我的项目，帮我重构它！”。
->
-> 当 AI 给出修改建议后，直接将对话中的 Markdown 粘贴回工具，一键**还原/覆盖**本地代码。整个过程丝滑顺畅，不再有遗漏，不再有格式混乱。**不仅支持 Python 源码，更支持打包好的 `.exe` 随开随用！**
-
----
-
-## ✨ 核心亮点
-
-### 1. 彻底解决“代码块嵌套”灾难
-传统的代码合并脚本在遇到包含 Markdown 反引号（` ``` `）的文件时往往会发生解析截断。
-**CodeMerger 采用动态栅栏技术**：自动探测内容中最长的反引号链并生成 `N+1` 长度的栅栏，确保嵌套结构在 AI 窗口中完美呈现。
-
-### 2. 状态机精准还原
-内置基于栈思想的状态机解析引擎。无论是多深的项目目录，只要符合协议格式，都能精准还原。
-
-### 3. **Windows 独立运行 (EXE)**
-提供打包好的 `.exe` 文件，无需安装 Python 环境，双击即用，极大地方便了非 Python 环境下的开发协作。
-
-### 4. 双端覆盖
-- **GUI 界面**：专为 Windows 用户设计，支持一键选择、复制、导入/导出。
-- **CLI 工具**：专为 Linux/macOS 及自动化脚本设计，轻量级、零依赖。
-
----
-
-## 🚀 快速开始
-
-### 方式 A：Windows 免安装版 (推荐)
-1. 前往 [Releases](https://github.com/truthstriver/Codemerger/releases) 页面下载 `CodeMerger.exe`。
-2. 双击运行，即可开始提取或还原项目。
-3. *注：如果你想自行打包，可以运行项目根目录下的 `wrap.bat`。*
-
-### 方式 B：Python 脚本运行 (GUI)
-1. 确保已安装 Python 3.x。
-2. 在根目录执行：`python app.py`。
-3. **提取**：选择文件夹 -> 点击“生成 Markdown” -> 点击“复制全部内容” -> 发送给 AI。
-4. **还原**：将 AI 回复的内容粘贴到文本框 -> 选择目标路径 -> 点击“写入文件”。
-
-### 方式 C：命令行工具 (CLI)
-适用于 Linux 环境或自动化脚本。
+### 2. Python 源码运行 (GUI)
+如果你安装了 Python 环境：
 ```bash
-# 导出项目
-python code_merger.py -e -i ./my_project -o project_summary.md
-
-# 还原项目
-python code_merger.py -r -i project_summary.md -o ./restored_project
+# 安装依赖 (标准库无需安装，Tkinter 通常内置)
+python app.py
 ```
 
----
+### 3. 命令行模式 (CLI)
+适合 Linux/macOS 用户或集成到自动化脚本中：
+```bash
+# 导出项目到 Markdown
+python code_merger_cli.py -e -i ./my_project -o project.md
 
-## 📖 适用场景
+# 从 Markdown 还原项目
+python code_merger_cli.py -r -i project.md -o ./restored_dir
+```
 
-- **AI 全局代码审查**：将整个项目发给 AI，进行逻辑漏洞扫描。
-- **项目重构**：让 AI 看到全貌，统筹规划类与方法之间的依赖关系。
-- **跨机器传输**：通过简单的粘贴复制，在不同机器间转移整个小型工程。
-- **代码归档**：将零散的代码文件快速打包成单个可读性极强的文本文件。
+## 📖 使用指南 (GUI)
 
----
+### 提取 (发送给 AI)
+1. 打开软件，左侧会自动加载当前目录树（支持复选框过滤）。
+2. 在“目标路径”选择你要提取的项目根目录。
+3. 在右侧勾选需要提取的文件类型（如 `.py`, `.md`, `.js` 等）。
+4. 点击 **[提取: 生成 Markdown]**。
+5. 点击 **[复制全部内容]**，将其粘贴给 AI。
 
-## 📝 Markdown 协议规范
+### 还原 (应用 AI 修改)
+1. 将 AI 回复的代码块（需符合下述格式）粘贴到软件的文本框中。
+2. 确认“目标路径”是你想要写入的文件夹。
+3. 点击 **[还原: 写入文件]**。
 
-为了保证还原成功，CodeMerger 遵循以下协议：
-1. **路径声明**：代码块第一行必须是 `# path/to/file` 格式。
-2. **防截断**：外层反引号数量必须多于内容中的反引号（工具已自动处理）。
+## 🛠️ 关于打包 (Build)
+
+本项目包含完整的 PyInstaller 打包配置，如果你修改了源码，可以自行生成 `.exe` 文件。
+
+**前提**：安装 PyInstaller (`pip install pyinstaller`)
+
+**步骤**：
+1. 在项目根目录双击运行 `wrap.bat`。
+2. 等待脚本执行完毕。
+3. 在生成的 `dist/` 目录下找到 `CodeMerger.exe`。
+
+*(注：`wrap.bat` 实际上执行了 `pyinstaller CodeMerger.spec`)*
+
+## 📝 格式协议
+
+为了确保工具能正确还原文件，Markdown 内容需遵循以下简单规则（工具生成的内容默认符合此规则，**建议将 `prompt.md` 的内容发给 AI 以要求其遵循**）：
+
+1.  代码块必须注明路径：第一行需为 `# path/filename` 注释。
+2.  代码块包裹：使用 Markdown 代码块包裹内容。
 
 **示例：**
+
 ````markdown
 ```python
-# src/main.py
-print("Hello World")
+# src/utils.py
+def hello():
+    print("Hello World")
 ```
-
-````python
-# README.md
-# My Project
-Example: ```print('test')```
-````
 ````
 
----
+## 📂 项目结构
 
-## 📦 项目结构
-
-```text
-项目分析工具/
-    |-- CodeMerger.exe         # 打包好的 Windows 可执行文件 (Release版)
-    |-- app.py                 # Tkinter GUI 主程序源码
-    |-- CodeMerger.spec        # PyInstaller 打包配置文件
-    |-- wrap.bat               # 一键打包脚本
-    |-- prompt.md              # 推荐给 AI 的 Prompt (让 AI 按此格式回复)
-    |-- 项目分析工具_cli/
-        |-- code_merger.py     # 跨平台 CLI 核心脚本
-```
-
-## 🛠️ 如何自行打包 EXE
-
-如果你修改了源码并想重新生成 `.exe`：
-1. 安装 PyInstaller: `pip install pyinstaller`
-2. 双击运行 `wrap.bat`。
-3. 打包完成后，在 `dist/` 目录下即可找到 `CodeMerger.exe`。
-
----
-
-**立即下载，开启你的 AI 增强开发之旅！**
+*   `CodeMerger.exe`: Windows 可执行程序 (Release)
+*   `app.py`: GUI 主程序源码 (Tkinter)
+*   `code_merger_cli.py`: 命令行核心逻辑
+*   `wrap.bat`: Windows 一键打包脚本
+*   `CodeMerger.spec`: PyInstaller 配置文件
+*   `prompt.md`: 推荐发给 AI 的提示词文件
