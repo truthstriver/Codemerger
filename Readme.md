@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="CodeMerger Banner" width="100%">
+</p>
+
 # CodeMerger
 
 [![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/)
