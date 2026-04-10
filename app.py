@@ -40,21 +40,33 @@ class CodeMergerApp:
 ### 格式要求（非常重要）：
 
 1.  **目录结构**：
-    首先请提供一个 ASCII 格式的项目目录树结构。
+    首先请提供一个 ASCII 格式的项目目录树结构（根目录不要用 `.`，直接显示文件夹名）。
+    该目录树不要用反引号包裹。
     
-2.  **代码块格式**：
+2.  **代码块格式（核心逻辑）**：
     *   所有的代码文件必须包含在 Markdown 的 `python` 代码块中。
-    *   **防截断规则**：如果文件内容包含 N 个连续反引号，请使用 N+1 个反引号包裹。
+    *   **防截断规则（关键）**：如果文件内容本身包含 **N 个连续的反引号**（例如 ` ``` `），请务必使用 **N+1 个反引号**（例如 ` ```` `）来包裹整个代码块，以确保工具能正确解析嵌套结构。
     *   **路径标识**：每个代码块的 **第一行必须是该文件的相对路径注释**（使用 `/` 作为分隔符）。
 
-    **示例：**
+    **普通文件示例：**
     ```python
     # src/main.py
-    print("Hello")
+    import os
+    print("Hello World")
     ```
 
+    **包含反引号的文件示例（注意外层用了4个反引号）：**
+    ````python
+    # src/string_utils.py
+    def get_markdown_snippet():
+        return "```text\nSample\n```"
+    ````
+
 3.  **完整性**：
-    请提供完整的、可运行的代码。
+    请不要省略代码（不要只写 `pass` 或 `...`），确保代码是可以直接运行的完整版本。
+
+4.  **范围**：
+    包括所有必要的文件（如 `requirements.txt`, `README.md`, `__init__.py` 等）。如果是非 Python 文件（如 .txt, .json, .md），也请使用 `python` 代码块包裹，并在第一行保留 `# path/filename` 注释，以便工具识别路径。
 """
 
         self.setup_ui()
@@ -206,7 +218,12 @@ class CodeMergerApp:
         self.stats_label.pack(side=tk.LEFT, padx=10)
 
         # Initial Text
-        welcome_msg = "# Ready to start.\n"
+        welcome_msg = """ # 使用说明:
+ # 1. [选择文件夹]: 左侧会自动加载目录树，默认全部勾选。
+ # 2. [筛选]: 在左侧树中勾选/取消勾选目录或文件，上方设置允许的后缀。
+ #    (注意：最终提取的文件 = 左侧勾选的文件 AND 后缀名匹配的文件)
+ # 3. [提取]: 生成 Markdown。
+ # 4. [还原]: 将 Markdown 内容写回文件。"""
         self.text_area.insert(tk.END, welcome_msg)
 
     # ================= Tree Logic =================
@@ -349,39 +366,44 @@ class CodeMergerApp:
         output = []
         base_level = root_path.count(os.sep)
         for root, dirs, files in os.walk(root_path):
+            # 修正点：只过滤忽略名单，不要因为父目录未选中就阻止遍历子目录
             dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS]
             
-            # 过滤逻辑: 仅处理选中的目录
-            active_dirs = [d for d in dirs if self.tree_selection.get(os.path.join(root, d), False)]
-            dirs[:] = active_dirs
-            
-            if root != root_path and not self.tree_selection.get(root, False):
-                continue
-
+            # 计算层级
             level = root.count(os.sep) - base_level
             indent = "    " * level
             folder_name = os.path.basename(root)
-            if level == 0: output.append(f"{folder_name}/")
-            else: output.append(f"{indent}|-- {folder_name}/")
+            
+            # 显示逻辑：如果是根目录，或者该目录被显式选中，则打印目录行
+            # (如果目录没选但子文件选了，目录行不显示，只显示缩进后的文件名，这样保持了逻辑一致性)
+            if root == root_path or self.tree_selection.get(root, False):
+                if level == 0: output.append(f"{folder_name}/")
+                else: output.append(f"{indent}|-- {folder_name}/")
             
             sub_indent = "    " * (level + 1)
             for f in files:
                 if f in self.IGNORE_FILES: continue
+                # 只要文件被选中，就添加到树结构中
                 if self.tree_selection.get(os.path.join(root, f), False):
                     output.append(f"{sub_indent}|-- {f}")
         return "\n".join(output)
+
 
     def get_filtered_file_content(self, root_path):
         output = []
         allowed_extensions = self.get_allowed_extensions()
 
         for root, dirs, files in os.walk(root_path):
+            # 修正点1：只过滤系统忽略的文件夹 (如 .git)，不再过滤未选中的文件夹
             dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS]
-            if root != root_path and not self.tree_selection.get(root, False):
-                continue
+            
+            # 修正点2：删除了原先 "如果 root 没选中则 continue" 的代码
+            # 这样即使父目录没勾选，os.walk 依然会进入里面检查文件
                 
             for file in files:
                 full_path = os.path.join(root, file)
+                
+                # 核心判断：直接判断具体文件是否被勾选
                 if not self.tree_selection.get(full_path, False): continue
                     
                 if file.lower().endswith(allowed_extensions):
